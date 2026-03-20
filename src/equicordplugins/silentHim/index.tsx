@@ -1,14 +1,26 @@
 /*
- * Vencord, a Discord client mod
+ * Vencord, a modification for Discord's desktop app
  * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 
 import { definePluginSettings } from "@api/Settings";
 import { EquicordDevs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
 import { findByPropsLazy } from "@webpack";
-import { React } from "@webpack/common";
+import { React, Menu, MediaEngineStore } from "@webpack/common";
 
 export const settings = definePluginSettings({
     speakingColor: {
@@ -33,6 +45,7 @@ export default definePlugin({
         /* Forziamo il colore rosso ovunque per gli utenti silenziati */
         .silent-him-speaking {
             --status-green: var(--silent-him-color, red) !important;
+            --status-green-600: var(--silent-him-color, red) !important;
             --status-speaking: var(--silent-him-color, red) !important;
             --voice-speaking: var(--silent-him-color, red) !important;
             --brand-experiment: var(--silent-him-color, red) !important;
@@ -47,7 +60,7 @@ export default definePlugin({
             box-shadow: 0 0 0 2px var(--silent-him-color, red) !important;
             border-color: var(--silent-him-color, red) !important;
         }
-
+        
         .silent-him-speaking rect[fill*="green"],
         .silent-him-speaking circle[fill*="green"],
         .silent-him-speaking [fill*="var(--status-green)"] {
@@ -69,30 +82,27 @@ export default definePlugin({
         document.documentElement.style.setProperty("--silent-him-color", settings.store.speakingColor);
     },
 
-    // Metodo ufficiale per aggiungere voci al menu contestuale
     contextMenus: {
         "user-context": (children, { user }) => {
             if (!user) return;
 
-            const MediaEngineStore = Vencord.Webpack.findStore("MediaEngineStore");
             const currentVolume = MediaEngineStore.getLocalVolume(user.id);
-            const { MenuCheckboxItem, MenuGroup } = Vencord.Webpack.common.Menu;
 
-            children.push(
-                React.createElement(MenuGroup, {},
-                    React.createElement(MenuCheckboxItem, {
-                        id: "silent-him-toggle",
-                        label: "SilentHim (Vol 0%)",
-                        checked: currentVolume === 0,
-                        action: () => {
+            children.unshift(
+                <Menu.MenuGroup>
+                    <Menu.MenuCheckboxItem
+                        id="silent-him-toggle"
+                        label="SilentHim (Vol 0%)"
+                        checked={currentVolume === 0}
+                        action={() => {
                             if (currentVolume === 0) {
                                 AudioEngine.setLocalVolume(user.id, 100);
                             } else {
                                 AudioEngine.setLocalVolume(user.id, 0);
                             }
-                        }
-                    })
-                )
+                        }}
+                    />
+                </Menu.MenuGroup>
             );
         }
     },
@@ -108,8 +118,7 @@ export default definePlugin({
                             const userId = arguments[0]?.user?.id;
                             if (!userId) return ${speakingVar};
 
-                            const MediaEngineStore = Vencord.Webpack.findStore("MediaEngineStore");
-                            const isVol0 = MediaEngineStore.getLocalVolume(userId) === 0;
+                            const isVol0 = Vencord.Webpack.common.MediaEngineStore.getLocalVolume(userId) === 0;
 
                             if (isVol0 && ${speakingVar}) {
                                 if (arguments[0].className && !arguments[0].className.includes("silent-him-speaking")) {
