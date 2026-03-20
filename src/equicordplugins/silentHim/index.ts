@@ -1,34 +1,26 @@
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { findByPropsLazy } from "@webpack";
-import { React, VoiceStateStore } from "@webpack/common";
+import { React } from "@webpack/common";
 import { addContextMenuPatch, removeContextMenuPatch } from "@api/ContextMenu";
 import { EquicordDevs } from "@utils/constants";
-
-// Store degli utenti silenziati tramite SilentHim
-const silencedUsers = new Set<string>();
 
 export const settings = definePluginSettings({
     speakingColor: {
         type: OptionType.STRING,
-        description: "Colore dell'icona quando l'utente silenziato parla (es. red, #ff0000)",
+        description: "Colore dell'icona quando l'utente con volume a 0 parla (es. red, #ff0000)",
         default: "red",
         onChange: (val) => {
             document.documentElement.style.setProperty("--silent-him-color", val);
         }
     },
-    silencedUserIds: {
-        type: OptionType.STRING,
-        default: "[]",
-        hidden: true
-    }
 });
 
 const AudioEngine = findByPropsLazy("setLocalVolume");
 
 export default definePlugin({
     name: "SilentHim",
-    description: "Silenzia gli utenti impostando il volume a 0 per continuare a vedere quando parlano.",
+    description: "Cambia il colore dell'indicatore di conversazione in rosso per gli utenti con volume impostato a 0%.",
     authors: [EquicordDevs.dpassaggio],
     settings,
     
@@ -63,16 +55,6 @@ export default definePlugin({
 
     onStart() {
         this.updateColor();
-        
-        try {
-            const saved = JSON.parse(settings.store.silencedUserIds);
-            if (Array.isArray(saved)) {
-                saved.forEach(id => silencedUsers.add(id));
-            }
-        } catch (e) {
-            console.error("[SilentHim] Errore nel caricamento utenti silenziati:", e);
-        }
-
         addContextMenuPatch("user-context", this.patchUserContext);
     },
 
@@ -87,7 +69,8 @@ export default definePlugin({
     patchUserContext(children, { user }) {
         if (!user) return;
         
-        const isSilenced = silencedUsers.has(user.id);
+        const MediaEngineStore = Vencord.Webpack.findStore("MediaEngineStore");
+        const currentVolume = MediaEngineStore.getLocalVolume(user.id);
         const { MenuCheckboxItem, MenuGroup } = Vencord.Webpack.common.Menu;
 
         children.push(
@@ -95,16 +78,13 @@ export default definePlugin({
                 React.createElement(MenuCheckboxItem, {
                     id: "silent-him-toggle",
                     label: "SilentHim (Vol 0%)",
-                    checked: isSilenced,
+                    checked: currentVolume === 0,
                     action: () => {
-                        if (isSilenced) {
-                            silencedUsers.delete(user.id);
+                        if (currentVolume === 0) {
                             AudioEngine.setLocalVolume(user.id, 100);
                         } else {
-                            silencedUsers.add(user.id);
                             AudioEngine.setLocalVolume(user.id, 0);
                         }
-                        settings.store.silencedUserIds = JSON.stringify([...silencedUsers]);
                     }
                 })
             )
@@ -122,20 +102,14 @@ export default definePlugin({
                             const userId = arguments[0]?.user?.id;
                             if (!userId) return ${speakingVar};
                             
-                            const plugin = Vencord.Plugins.plugins.SilentHim;
-                            const isSilentHim = plugin?._silencedUsers?.has(userId);
+                            const MediaEngineStore = Vencord.Webpack.findStore("MediaEngineStore");
+                            const isVol0 = MediaEngineStore.getLocalVolume(userId) === 0;
                             
-                            if (isSilentHim) {
-                                const SpeakingStore = Vencord.Webpack.findStore("SpeakingStore");
-                                const isSpeaking = SpeakingStore.isSpeaking(userId);
-                                
-                                if (isSpeaking) {
-                                    if (arguments[0].className && !arguments[0].className.includes("silent-him-speaking")) {
-                                        arguments[0].className += " silent-him-speaking";
-                                    } else if (!arguments[0].className) {
-                                        arguments[0].className = "silent-him-speaking";
-                                    }
-                                    return true;
+                            if (isVol0 && ${speakingVar}) {
+                                if (arguments[0].className && !arguments[0].className.includes("silent-him-speaking")) {
+                                    arguments[0].className += " silent-him-speaking";
+                                } else if (!arguments[0].className) {
+                                    arguments[0].className = "silent-him-speaking";
                                 }
                             }
                         } catch (e) {}
@@ -144,7 +118,5 @@ export default definePlugin({
                 }
             }
         }
-    ],
-
-    _silencedUsers: silencedUsers
+    ]
 });
